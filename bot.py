@@ -3,13 +3,11 @@ from pyrogram import Client, filters
 from pyrogram.enums import ChatType
 from pyrogram.errors import (
     UserAlreadyParticipant,
-    UserBannedInChannel,
     ChatAdminRequired,
     UserDeactivated,
     AuthKeyUnregistered,
     PeerIdInvalid
 )
-
 from pytgcalls import PyTgCalls
 from config import *
 
@@ -71,7 +69,7 @@ async def notify(chat_id, text):
 
 # ================= AUTO INVITE ASSISTANT =================
 async def ensure_assistant(chat):
-    # 1️⃣ jika sudah ada
+    # cek sudah ada
     try:
         m = await bot.get_chat_member(chat.id, ASSISTANT_ID)
         if m.status in ("member", "administrator", "owner"):
@@ -79,42 +77,42 @@ async def ensure_assistant(chat):
     except Exception:
         pass
 
-    # 2️⃣ join via username (public group)
+    # join via username (grup publik)
     if chat.username:
         try:
             await assistant.join_chat(chat.username)
             return True
         except UserAlreadyParticipant:
             return True
-        except Exception as e:
-            await notify(chat.id, f"ℹ️ Join via username gagal:\n{e}")
+        except Exception:
+            pass
 
-    # 3️⃣ invite via bot (bot admin)
+    # invite via bot (bot admin)
     try:
         await bot.add_chat_members(chat.id, ASSISTANT_ID)
-        await notify(chat.id, "👤 Asisten berhasil diundang.\n▶️ Ketik /play lagi")
+        await notify(chat.id, "👤 Asisten diundang.\n▶️ Ketik /play lagi")
     except UserAlreadyParticipant:
         return True
     except PeerIdInvalid:
-        await notify(chat.id, "❌ ASSISTANT_ID tidak valid (bukan akun USER)")
+        await notify(chat.id, "❌ ASSISTANT_ID bukan akun USER")
     except Exception as e:
         await notify(chat.id, f"❌ Gagal invite asisten:\n{e}")
 
     return False
 
-# ================= AUDIO (YT-DLP + COOKIES) =================
+# ================= AUDIO (YT-DLP + COOKIES + ANDROID) =================
 def download_audio(query: str):
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": "music.%(ext)s",
         "quiet": True,
         "noplaylist": True,
-        "cookiefile": "cookies.txt",   # 🔥 WAJIB
-        "nocheckcertificate": True,
-        "ignoreerrors": True,
+        "cookiefile": "cookies.txt",
         "geo_bypass": True,
+        "nocheckcertificate": True,
         "extractor_args": {
             "youtube": {
+                "player_client": ["android"],
                 "skip": ["dash", "hls"]
             }
         }
@@ -131,9 +129,7 @@ def download_audio(query: str):
         if "entries" in info:
             info = info["entries"][0]
 
-        filename = ydl.prepare_filename(info)
-
-    return filename
+        return ydl.prepare_filename(info)
 
 # ================= OWNER ON / OFF =================
 @bot.on_message(filters.command("on") & filters.group)
@@ -156,7 +152,7 @@ async def off_group(_, msg):
 @guard
 async def play(_, msg):
     if len(msg.command) < 2:
-        await msg.reply("❌ Gunakan: /play judul lagu atau url")
+        await msg.reply("❌ Gunakan: /play judul lagu / url")
         return
 
     if not await ensure_assistant(msg.chat):
@@ -241,5 +237,5 @@ except (UserDeactivated, AuthKeyUnregistered):
     print("❌ Session asisten mati, login ulang")
     exit(1)
 
-# py-tgcalls v2 → tidak pakai call.start()
+# py-tgcalls v2 → TIDAK pakai call.start()
 bot.run()
