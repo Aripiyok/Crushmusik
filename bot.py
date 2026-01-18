@@ -6,12 +6,13 @@ from pyrogram.errors import (
     UserBannedInChannel,
     ChatWriteForbidden,
     ChatAdminRequired,
-    FloodWait,
     UserDeactivated,
     AuthKeyUnregistered
 )
+
 from pytgcalls import PyTgCalls
-from pytgcalls.types import AudioPiped
+from pytgcalls.types.input_stream import AudioFile
+
 from config import *
 
 # ================= FILE STORAGE =================
@@ -37,8 +38,11 @@ assistant = Client("assistant", api_id=API_ID, api_hash=API_HASH)
 call = PyTgCalls(assistant)
 
 # ================= UTIL =================
-def is_owner(uid): return uid == OWNER_ID
-def is_on(cid): return GROUP_STATUS.get(str(cid), True)
+def is_owner(uid):
+    return uid == OWNER_ID
+
+def is_on(cid):
+    return GROUP_STATUS.get(str(cid), True)
 
 def guard(func):
     async def wrapper(client, msg):
@@ -67,82 +71,116 @@ async def ensure_assistant(chat):
         await notify(chat.id, "❌ Asisten tidak bisa masuk grup")
     return False
 
-def download_audio(q):
-    y = yt_dlp.YoutubeDL({"format":"bestaudio","outtmpl":"music.mp3","quiet":True})
-    y.download([q])
-    return "music.mp3"
+# ================= AUDIO =================
+def download_audio(query: str):
+    ydl_opts = {
+        "format": "bestaudio",
+        "outtmpl": "music.%(ext)s",
+        "quiet": True,
+        "noplaylist": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(query, download=True)
+        filename = ydl.prepare_filename(info)
+    return filename
 
-# ================= OWNER ON/OFF =================
+# ================= OWNER ON / OFF =================
 @bot.on_message(filters.command("on") & filters.group)
 async def on_group(_, msg):
-    if not is_owner(msg.from_user.id): return
+    if not is_owner(msg.from_user.id):
+        return
     GROUP_STATUS[str(msg.chat.id)] = True
     save_json(STATUS_FILE, GROUP_STATUS)
+    await msg.reply("✅ Bot diaktifkan di grup ini")
 
 @bot.on_message(filters.command("off") & filters.group)
 async def off_group(_, msg):
-    if not is_owner(msg.from_user.id): return
+    if not is_owner(msg.from_user.id):
+        return
     GROUP_STATUS[str(msg.chat.id)] = False
     save_json(STATUS_FILE, GROUP_STATUS)
+    # silent setelah ini
 
 # ================= MUSIC =================
 @bot.on_message(filters.command("play") & filters.group)
 @guard
 async def play(_, msg):
-    if len(msg.command) < 2: return
-    if not await ensure_assistant(msg.chat): return
-    audio = download_audio(" ".join(msg.command[1:]))
-    try:
-        await call.join_group_call(msg.chat.id, AudioPiped(audio))
-    except Exception:
-        pass
+    if len(msg.command) < 2:
+        return
 
-# ================= AUTO RECONNECT =================
-@call.on_stream_end()
-async def reconnect(_, update):
+    if not await ensure_assistant(msg.chat):
+        return
+
+    query = " ".join(msg.command[1:])
+    await msg.reply("🎵 Mengunduh audio...")
+
     try:
-        await call.join_group_call(update.chat_id, update.stream)
-    except Exception:
-        pass
+        audio_path = download_audio(query)
+    except Exception as e:
+        await msg.reply("❌ Gagal download audio")
+        return
+
+    try:
+        await call.join_group_call(
+            msg.chat.id,
+            AudioFile(audio_path),
+        )
+        await msg.reply("▶️ Memutar musik")
+    except Exception as e:
+        await msg.reply("❌ Gagal join voice chat")
 
 # ================= ADMIN GROUP TRACK =================
 @bot.on_chat_member_updated()
 async def admin_update(_, u):
     me = await bot.get_me()
-    if u.new_chat_member.user.id != me.id: return
+    if u.new_chat_member.user.id != me.id:
+        return
+
     if u.new_chat_member.status in ("administrator", "owner"):
         ADMIN_GROUPS[str(u.chat.id)] = u.chat.title
         save_json(ADMIN_FILE, ADMIN_GROUPS)
-        await notify(OWNER_ID, f"🔔 Bot di-admin-kan di grup baru:\n{u.chat.title}")
+        await notify(
+            OWNER_ID,
+            f"🔔 Bot di-admin-kan di grup baru:\n{u.chat.title}\n{u.chat.id}"
+        )
 
 # ================= OWNER COMMAND =================
 @bot.on_message(filters.command("scangrup"))
 async def scan(_, msg):
-    if not is_owner(msg.from_user.id): return
+    if not is_owner(msg.from_user.id):
+        return
+
     ADMIN_GROUPS.clear()
     async for d in bot.get_dialogs():
         if d.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
             try:
                 m = await bot.get_chat_member(d.chat.id, "me")
-                if m.status in ("administrator","owner"):
+                if m.status in ("administrator", "owner"):
                     ADMIN_GROUPS[str(d.chat.id)] = d.chat.title
             except ChatAdminRequired:
                 pass
+
     save_json(ADMIN_FILE, ADMIN_GROUPS)
     await msg.reply(f"✅ Scan selesai: {len(ADMIN_GROUPS)} grup")
 
 @bot.on_message(filters.command("broadcast"))
 async def bc(_, msg):
-    if not is_owner(msg.from_user.id): return
-    if len(msg.command) < 2: return
-    text = msg.text.split(None,1)[1]
+    if not is_owner(msg.from_user.id):
+        return
+
+    if len(msg.command) < 2:
+        return
+
+    text = msg.text.split(None, 1)[1]
     ok = 0
+
     for cid in ADMIN_GROUPS:
         try:
             await bot.send_message(int(cid), text)
             ok += 1
         except Exception:
             pass
+
     await msg.reply(f"📣 Broadcast terkirim ke {ok} grup")
 
 # ================= START =================
