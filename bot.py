@@ -4,10 +4,10 @@ from pyrogram.enums import ChatType
 from pyrogram.errors import (
     UserAlreadyParticipant,
     UserBannedInChannel,
-    ChatWriteForbidden,
     ChatAdminRequired,
     UserDeactivated,
-    AuthKeyUnregistered
+    AuthKeyUnregistered,
+    PeerIdInvalid
 )
 
 from pytgcalls import PyTgCalls
@@ -66,43 +66,33 @@ async def notify(chat_id, text):
     except Exception:
         pass
 
-# ================= AUTO INVITE ASSISTANT =================
+# ================= AUTO INVITE ASSISTANT (FIX FINAL) =================
 async def ensure_assistant(chat):
-    try:
-        # Coba join sendiri (kalau grup public)
-        await assistant.join_chat(chat.id)
-        return True
+    # 1️⃣ Kalau grup publik, join via USERNAME (WAJIB)
+    if chat.username:
+        try:
+            await assistant.join_chat(chat.username)
+            return True
+        except UserAlreadyParticipant:
+            return True
+        except Exception as e:
+            await notify(chat.id, f"ℹ️ Join via username gagal:\n{e}")
 
+    # 2️⃣ Kalau belum masuk → BOT INVITE ASISTEN
+    try:
+        await bot.add_chat_members(chat.id, ASSISTANT_ID)
+        await notify(
+            chat.id,
+            "👤 Asisten berhasil diundang.\n▶️ Ketik /play lagi"
+        )
     except UserAlreadyParticipant:
         return True
-
-    except ChatWriteForbidden:
-        # Bot invite asisten (karena bot ADMIN)
-        try:
-            await bot.add_chat_members(chat.id, ASSISTANT_ID)
-            await notify(
-                chat.id,
-                "👤 Asisten berhasil diundang.\n▶️ Ketik /play lagi"
-            )
-        except Exception as e:
-            await notify(
-                chat.id,
-                f"❌ Gagal invite asisten\n"
-                f"Reason: {e}\n\n"
-                f"Checklist:\n"
-                f"- Bot ADMIN\n"
-                f"- ASSISTANT_ID benar ({ASSISTANT_ID})\n"
-                f"- Privacy asisten = Everybody"
-            )
-        return False
-
-    except UserBannedInChannel:
-        await notify(chat.id, "🚫 Akun asisten TERBANNED di grup ini")
-        return False
-
+    except PeerIdInvalid:
+        await notify(chat.id, "❌ ASSISTANT_ID tidak valid (bukan akun USER)")
     except Exception as e:
-        await notify(chat.id, f"❌ Error join asisten:\n{e}")
-        return False
+        await notify(chat.id, f"❌ Gagal invite asisten:\n{e}")
+
+    return False
 
 # ================= AUDIO =================
 def download_audio(query: str):
@@ -132,7 +122,6 @@ async def off_group(_, msg):
         return
     GROUP_STATUS[str(msg.chat.id)] = False
     save_json(STATUS_FILE, GROUP_STATUS)
-    # silent setelah ini
 
 # ================= MUSIC =================
 @bot.on_message(filters.command("play") & filters.group)
@@ -220,5 +209,5 @@ except (UserDeactivated, AuthKeyUnregistered):
     print("❌ Session asisten mati, login ulang")
     exit(1)
 
-# py-tgcalls v2 → TIDAK pakai call.start()
+# py-tgcalls v2 → tidak pakai call.start()
 bot.run()
