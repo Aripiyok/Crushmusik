@@ -11,8 +11,6 @@ from pyrogram.errors import (
 )
 
 from pytgcalls import PyTgCalls
-from pytgcalls.types.input_stream import AudioFile
-
 from config import *
 
 # ================= FILE STORAGE =================
@@ -116,18 +114,15 @@ async def play(_, msg):
 
     try:
         audio_path = download_audio(query)
-    except Exception as e:
+    except Exception:
         await msg.reply("❌ Gagal download audio")
         return
 
     try:
-        await call.join_group_call(
-            msg.chat.id,
-            AudioFile(audio_path),
-        )
+        await call.play(msg.chat.id, audio_path)
         await msg.reply("▶️ Memutar musik")
     except Exception as e:
-        await msg.reply("❌ Gagal join voice chat")
+        await msg.reply("❌ Gagal memutar audio")
 
 # ================= ADMIN GROUP TRACK =================
 @bot.on_chat_member_updated()
