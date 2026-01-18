@@ -71,7 +71,15 @@ async def notify(chat_id, text):
 
 # ================= AUTO INVITE ASSISTANT =================
 async def ensure_assistant(chat):
-    # 1️⃣ join via username (public group)
+    # 1️⃣ jika sudah ada
+    try:
+        m = await bot.get_chat_member(chat.id, ASSISTANT_ID)
+        if m.status in ("member", "administrator", "owner"):
+            return True
+    except Exception:
+        pass
+
+    # 2️⃣ join via username (public group)
     if chat.username:
         try:
             await assistant.join_chat(chat.username)
@@ -81,13 +89,10 @@ async def ensure_assistant(chat):
         except Exception as e:
             await notify(chat.id, f"ℹ️ Join via username gagal:\n{e}")
 
-    # 2️⃣ bot invite asisten
+    # 3️⃣ invite via bot (bot admin)
     try:
         await bot.add_chat_members(chat.id, ASSISTANT_ID)
-        await notify(
-            chat.id,
-            "👤 Asisten berhasil diundang.\n▶️ Ketik /play lagi"
-        )
+        await notify(chat.id, "👤 Asisten berhasil diundang.\n▶️ Ketik /play lagi")
     except UserAlreadyParticipant:
         return True
     except PeerIdInvalid:
@@ -97,23 +102,31 @@ async def ensure_assistant(chat):
 
     return False
 
-# ================= AUDIO =================
+# ================= AUDIO (YT-DLP + COOKIES) =================
 def download_audio(query: str):
     ydl_opts = {
-        "format": "bestaudio",
+        "format": "bestaudio/best",
         "outtmpl": "music.%(ext)s",
         "quiet": True,
         "noplaylist": True,
+        "cookiefile": "cookies.txt",   # 🔥 WAJIB
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
+        "geo_bypass": True,
+        "extractor_args": {
+            "youtube": {
+                "skip": ["dash", "hls"]
+            }
+        }
     }
 
-    # URL atau teks
-    if is_url(query):
-        target = query
-    else:
-        target = f"ytsearch1:{query}"
+    target = query if is_url(query) else f"ytsearch1:{query}"
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(target, download=True)
+
+        if not info:
+            raise Exception("Video tidak ditemukan")
 
         if "entries" in info:
             info = info["entries"][0]
