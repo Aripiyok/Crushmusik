@@ -31,8 +31,19 @@ GROUP_STATUS = load_json(STATUS_FILE)
 ADMIN_GROUPS = load_json(ADMIN_FILE)
 
 # ================= CLIENT =================
-bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-assistant = Client("assistant", api_id=API_ID, api_hash=API_HASH)
+bot = Client(
+    "bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
+
+assistant = Client(
+    "assistant",
+    api_id=API_ID,
+    api_hash=API_HASH
+)
+
 call = PyTgCalls(assistant)
 
 # ================= UTIL =================
@@ -119,6 +130,7 @@ async def play(_, msg):
         return
 
     try:
+        # py-tgcalls v2 API
         await call.play(msg.chat.id, audio_path)
         await msg.reply("▶️ Memutar musik")
     except Exception as e:
@@ -185,5 +197,5 @@ except (UserDeactivated, AuthKeyUnregistered):
     print("❌ Session asisten mati, login ulang")
     exit(1)
 
-call.start()
+# py-tgcalls v2 TIDAK pakai call.start()
 bot.run()
