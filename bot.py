@@ -53,6 +53,9 @@ def is_owner(uid):
 def is_on(cid):
     return GROUP_STATUS.get(str(cid), True)
 
+def is_url(text: str):
+    return text.startswith("http://") or text.startswith("https://")
+
 def guard(func):
     async def wrapper(client, msg):
         if not is_on(msg.chat.id):
@@ -66,9 +69,9 @@ async def notify(chat_id, text):
     except Exception:
         pass
 
-# ================= AUTO INVITE ASSISTANT (FIX FINAL) =================
+# ================= AUTO INVITE ASSISTANT =================
 async def ensure_assistant(chat):
-    # 1️⃣ Kalau grup publik, join via USERNAME (WAJIB)
+    # 1️⃣ join via username (public group)
     if chat.username:
         try:
             await assistant.join_chat(chat.username)
@@ -78,7 +81,7 @@ async def ensure_assistant(chat):
         except Exception as e:
             await notify(chat.id, f"ℹ️ Join via username gagal:\n{e}")
 
-    # 2️⃣ Kalau belum masuk → BOT INVITE ASISTEN
+    # 2️⃣ bot invite asisten
     try:
         await bot.add_chat_members(chat.id, ASSISTANT_ID)
         await notify(
@@ -102,9 +105,21 @@ def download_audio(query: str):
         "quiet": True,
         "noplaylist": True,
     }
+
+    # URL atau teks
+    if is_url(query):
+        target = query
+    else:
+        target = f"ytsearch1:{query}"
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(query, download=True)
+        info = ydl.extract_info(target, download=True)
+
+        if "entries" in info:
+            info = info["entries"][0]
+
         filename = ydl.prepare_filename(info)
+
     return filename
 
 # ================= OWNER ON / OFF =================
@@ -128,18 +143,19 @@ async def off_group(_, msg):
 @guard
 async def play(_, msg):
     if len(msg.command) < 2:
+        await msg.reply("❌ Gunakan: /play judul lagu atau url")
         return
 
     if not await ensure_assistant(msg.chat):
         return
 
     query = " ".join(msg.command[1:])
-    await msg.reply("🎵 Mengunduh audio...")
+    await msg.reply("🎵 Mencari & mengunduh audio...")
 
     try:
         audio_path = download_audio(query)
-    except Exception:
-        await msg.reply("❌ Gagal download audio")
+    except Exception as e:
+        await msg.reply(f"❌ Gagal download audio\n{e}")
         return
 
     try:
@@ -151,6 +167,9 @@ async def play(_, msg):
 # ================= ADMIN GROUP TRACK =================
 @bot.on_chat_member_updated()
 async def admin_update(_, u):
+    if not u.new_chat_member or not u.new_chat_member.user:
+        return
+
     me = await bot.get_me()
     if u.new_chat_member.user.id != me.id:
         return
