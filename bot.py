@@ -66,19 +66,43 @@ async def notify(chat_id, text):
     except Exception:
         pass
 
+# ================= AUTO INVITE ASSISTANT =================
 async def ensure_assistant(chat):
     try:
+        # Coba join sendiri (kalau grup public)
         await assistant.join_chat(chat.id)
         return True
+
     except UserAlreadyParticipant:
         return True
+
+    except ChatWriteForbidden:
+        # Bot invite asisten (karena bot ADMIN)
+        try:
+            await bot.add_chat_members(chat.id, ASSISTANT_ID)
+            await notify(
+                chat.id,
+                "👤 Asisten berhasil diundang.\n▶️ Ketik /play lagi"
+            )
+        except Exception as e:
+            await notify(
+                chat.id,
+                f"❌ Gagal invite asisten\n"
+                f"Reason: {e}\n\n"
+                f"Checklist:\n"
+                f"- Bot ADMIN\n"
+                f"- ASSISTANT_ID benar ({ASSISTANT_ID})\n"
+                f"- Privacy asisten = Everybody"
+            )
+        return False
+
     except UserBannedInChannel:
         await notify(chat.id, "🚫 Akun asisten TERBANNED di grup ini")
-    except ChatWriteForbidden:
-        await notify(chat.id, "🔇 Akun asisten DIMUTE")
-    except Exception:
-        await notify(chat.id, "❌ Asisten tidak bisa masuk grup")
-    return False
+        return False
+
+    except Exception as e:
+        await notify(chat.id, f"❌ Error join asisten:\n{e}")
+        return False
 
 # ================= AUDIO =================
 def download_audio(query: str):
@@ -130,11 +154,10 @@ async def play(_, msg):
         return
 
     try:
-        # py-tgcalls v2 API
         await call.play(msg.chat.id, audio_path)
         await msg.reply("▶️ Memutar musik")
     except Exception as e:
-        await msg.reply("❌ Gagal memutar audio")
+        await msg.reply(f"❌ Gagal memutar audio\n{e}")
 
 # ================= ADMIN GROUP TRACK =================
 @bot.on_chat_member_updated()
@@ -197,5 +220,5 @@ except (UserDeactivated, AuthKeyUnregistered):
     print("❌ Session asisten mati, login ulang")
     exit(1)
 
-# py-tgcalls v2 TIDAK pakai call.start()
+# py-tgcalls v2 → TIDAK pakai call.start()
 bot.run()
